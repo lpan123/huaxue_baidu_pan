@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.2.6
+// @version         2.2.7
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -24,9 +24,6 @@
 // @require      https://cdn.staticfile.org/jquery/1.12.4/jquery.min.js
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
-// @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
-// @require https://greasyfork.org/scripts/443874-base64%E8%A7%A3%E5%AF%86%E5%BA%93/code/base64%E8%A7%A3%E5%AF%86%E5%BA%93.js?version=1043155
-// @require https://greasyfork.org/scripts/466786-%E6%96%B9%E6%B3%95%E5%BA%93/code/%E6%96%B9%E6%B3%95%E5%BA%93.js?version=1193720
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -354,7 +351,6 @@
 
 
 	function main() {
-		Base64.extendString();
 		GM_addStyle(
 			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;}`
 			)
@@ -470,17 +466,11 @@
 
 	function savePathList(i, labFig) {
 		if (i >= linkList.length) {
-			Swal.fire(_objectSpread(_objectSpread({
+			Swal.fire({
 				title: "".concat('文件转存').concat(linkList.length, '个').concat(failed, "个失败!"),
 				confirmButtonText: '确定',
 				showCloseButton: true
-			}, false), {}, {
-				onBeforeOpen: function onBeforeOpen() {
-
-				}
-			})).then(function() {
-
-			});
+			})
 			failed = 0;
 			linkList=[];
 			return;
