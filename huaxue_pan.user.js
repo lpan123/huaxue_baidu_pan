@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.2.7
+// @version         2.2.8
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -21,6 +21,8 @@
 // @exclude       *://pages.tmall.com/*
 // @exclude       *://uland.taobao.com/*
 // @connect     idey.cn
+// @connect     baidu.com
+// @connect      baidupcs.com
 // @require      https://cdn.staticfile.org/jquery/1.12.4/jquery.min.js
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
@@ -57,6 +59,7 @@
 	var requestData = {};
 	var reqstr = '/api/create';
 	var reqfile='/rest/2.0/xpan/multimedia?method=listall&order=name&limit=10000&path=';
+    var reqmetas='/api/filemetas?dlink=1&fsids=';
 	var btnRespConf = {
 		id: "btn-resp",
 		text: "秒传",
@@ -94,6 +97,8 @@
 						}
 						if (type === 'blob') {
 							resolve(res);
+						}else if(type==='arraybuffer'){
+							resolve(res);
 						} else {
 							resolve(res.response || res.responseText);
 						}
@@ -120,6 +125,28 @@
 					}
 				});
 			})
+		},request:(obj)=>{
+			var method=obj.method || 'GET',headers=obj.headers|| {},data=obj.data || {}, url=obj.url || '';
+			var xhr=new XMLHttpRequest();
+			xhr.onreadystatechange=function(){
+				if(xhr.readyState==4){
+					if((xhr.status>=200 && xhr.readyState<300) || xhr.status==304){
+						obj.callback && obj.callback(xhr.responseText)
+					}
+				}
+			}
+			if((obj.method).toUpperCase()=='GET'){
+				for(var key in data){
+					url+=(url.indexOf("?")==-1 ? '?' :'&');
+					url+=encodeURIComponent(key)+ "=" +encodeURIComponent(data['key']);
+				}
+			}
+			xhr.open(method,url,true);
+			if((obj.method).toUpperCase()=='GET'){
+				xhr.send(null);
+			}else{
+				xhr.send(JSON.stringify(data));
+			}
 		},parse: (link) => {try {let arrays = link.split('\n').map(function(list) {return list.trim().match(/([\dA-Fa-f]{32})#([\d]{1,20})#([\s\S]+)/);}).map(function(info) {return {md5: info[1],size: info[2],path: info[3]};});		return arrays;} catch (e) {	return false;}
 		},baiduClass:()=>{
 			if (
@@ -144,6 +171,7 @@
 				input: 'textarea',
 				title: '请输入秒传',
 				inputValue: row,
+                allowOutsideClick: false,
 				showCancelButton: true,
 				inputPlaceholder: '格式：文件MD5#文件大小#文件名\n 可测试文本：\n0960dd9c62fdf7ad23a21607e41a8630#2855602919#PS 2021 （MacOS 10.15 或更高）.zip',
 				cancelButtonText: '取消',
@@ -173,6 +201,8 @@
 						title: "文件转存中",
 						html: "正在转存文件<index>0</index>",
 						allowOutsideClick: false,
+                        showCloseButton: false,
+                            showConfirmButton:false,
 						onBeforeOpen: function() {
 							Swal.showLoading();
 							savePathList(0, 0);
@@ -200,6 +230,7 @@
 		},reqAjax:(f,n,num)=>{
 			if(num>=4){
 				f.errno=2;
+                tool.signMd5(n+1,0);
 				return;
 			}
 			$.ajax({
@@ -216,11 +247,11 @@
 				},
 				success:function(res){
 					if(res.errno===2){
-						tool.reqAjax(f,++num)
+						tool.reqAjax(f,n,++num)
 					}else if(res.errno===0){
-						tool.signMd5(n+1);
+						tool.signMd5(n+1,0);
 					}else if(res.errno===31190){
-						tool.signMd5(n+1);
+						tool.getOtherMd5Step1(f,n,0);
 					}else{
 						f.errno=res.errno;
 					}
@@ -231,7 +262,31 @@
 				}
 
 			})
-		},encodeMd5:(md5)=>{
+		},getOtherMd5Step1:(f,n,flag)=>{
+            let fsid=JSON.stringify([String(f.fs_id)]);
+			tool.get(`${reqmetas}${fsid}`,{"User-Agent":"netdisk;"},'json').then((res)=>{
+				tool.getOtherMd5Step2(f,n,flag,res.info[0].dlink);
+			}).catch((err)=>{
+				f.errno=err;
+				tool.signMd5(n+1,0);
+			})
+
+        },getOtherMd5Step2:(f,n,flag,downfile)=>{
+			tool.get(downfile,{Range:"bytes=0-1","User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
+				if(res.finalUrl.includes("issuecdn.baidupcs.com")){
+					f.errno=1910;tool.signMd5(n+1,0);
+					return;
+				}
+				let newMd5=res.responseHeaders.match(/content-md5: ([\da-f]{32})/i);
+				if(newMd5){ f.md5=newMd5[1].toLowerCase();tool.signMd5(n+1,0);}
+				else{
+					f.errno=1911;tool.signMd5(n+1,0);
+				}
+			}).catch((err)=>{
+				f.errno=err;
+				tool.signMd5(n+1,0);
+			})
+        },encodeMd5:(md5)=>{
 			if (!((parseInt(md5[9]) >= 0 && parseInt(md5[9]) <= 9) ||
 			        (md5[9] >= "a" && md5[9] <= "f")))
 			        return decrypt(md5);
@@ -274,7 +329,7 @@
 				success:function(res){
 					if(!res.errno){
 						if(!res.list.length){
-							tool.forEachListFile(n+1);
+							tool.forEachListFile(n+1,0);
 						}else{
 							res.list.forEach(function(i){
 								if(i.isdir){
@@ -297,7 +352,7 @@
 							isdir: 1,
 							errno: res.errno,
 						})
-						tool.forEachListFile(n+1);
+						tool.forEachListFile(n+1,0);
 					}
 				},
 				error:function(code){
@@ -306,7 +361,7 @@
 						isdir: 1,
 						errno: res.errno,
 					})
-					tool.forEachListFile(n+1);
+					tool.forEachListFile(n+1,0);
 				}
 			})
 		},showSwalCreate:()=>{
@@ -314,7 +369,8 @@
 				title: "秒传生成中",
 				html:"<p>正在生成第 <index>0</index> 个</p>",
 				showCloseButton: false,
-				showConfirmButton:false,
+                allowOutsideClick: false,
+                showConfirmButton:false,
 				onBeforeOpen: function() {
 					Swal.showLoading();
 				}
@@ -336,6 +392,7 @@
 			Swal.fire({
 				title: title,
 				html:"<p>快去复制获取秒传代码</p>",
+                allowOutsideClick: false,
 				showCloseButton: true,
 				confirmButtonText:"复制秒传代码",
 				preConfirm:function(){
@@ -469,7 +526,8 @@
 			Swal.fire({
 				title: "".concat('文件转存').concat(linkList.length, '个').concat(failed, "个失败!"),
 				confirmButtonText: '确定',
-				showCloseButton: true
+                allowOutsideClick: false,
+                showCloseButton: true
 			})
 			failed = 0;
 			linkList=[];
