@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.2.8
+// @version         2.2.9
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -147,8 +147,28 @@
 			}else{
 				xhr.send(JSON.stringify(data));
 			}
-		},parse: (link) => {try {let arrays = link.split('\n').map(function(list) {return list.trim().match(/([\dA-Fa-f]{32})#([\d]{1,20})#([\s\S]+)/);}).map(function(info) {return {md5: info[1],size: info[2],path: info[3]};});		return arrays;} catch (e) {	return false;}
-		},baiduClass:()=>{
+		},parse: (link) => {
+            try {
+                let arrays = link.split('\n').map(function(list) {
+                    return list.trim().match(/([\dA-Fa-f]{32})#([\dA-Fa-f]{32})#([\d]{1,20})#([\s\S]+)/);
+                }).map(function(info) {
+                    return {md5: info[1],size: info[3],path: info[4]};
+                });
+                return arrays;
+            }
+            catch (e) {	return false;}
+		},parse1:(link)=>{
+              try {
+                let arrays = link.split('\n').map(function(list) {
+                    return list.trim().match(/([\dA-Fa-f]{32})#([\d]{1,20})#([\s\S]+)/);
+                }).map(function(info) {
+                    return {md5: info[1],size: info[2],path: info[3]};
+                });
+                  return arrays;
+            }
+            catch (e) {	return false;}
+
+        },baiduClass:()=>{
 			if (
 				location.href.indexOf("//pan.baidu.com/disk/main") > 0
 			) {
@@ -186,6 +206,11 @@
 						return '不能为空';
 					}
 					linkList = tool.parse(inputRow);
+
+                    if (!linkList.length) {
+						linkList = tool.parse1(inputRow);
+					}
+
 
 					if (!linkList.length) {
 						return '抱歉，链接无法识别哦';
@@ -253,7 +278,7 @@
 					}else if(res.errno===31190){
 						tool.getOtherMd5Step1(f,n,0);
 					}else{
-						f.errno=res.errno;
+                        tool.getOtherMd5Step1(f,n,0);
 					}
 				},
 				error:function(code){
@@ -549,11 +574,13 @@
 				is_revision: 0
 			}
 		}).success(function(r) {
-			linkList[i].errno = r.errno;
+                f.errno = r.errno;
+
 		}).fail(function(r) {
 			linkList[i].errno = 115;
 		}).always(function() {
-			if (linkList[i].errno === 404 && labFig < 2) {
+			if (linkList[i].errno === -8 && labFig < 1) {
+                 f.path='copy_'+f.path;
 				savePathList(i, labFig + 1);
 				return;
 			} else if (linkList[i].errno) {
@@ -1449,11 +1476,12 @@
 
 
 			couponArea +=
-				'<span class="blkcolor1">当前价:<span style="color:red" id="now_price">加载中...</span></span>';
+				'<span class="blkcolor1"><span style="color:red" id="now_price">每日捡漏微群</span></span>';
 			couponArea += '<div class="trend-error-info-mini" id="echart-box">';
+            couponArea += '<div><img src="https://tb.idey.cn/tb12.png" width="220"/></div>';
 			couponArea += '</div></div>';
 			couponArea +=
-				'<div style="flex: 1" id="idey_mini_compare" class="minibar-tab">最低价：<span style="color:red" id="min_price">加载中...</span></div>';
+				'<div style="flex: 1" id="idey_mini_compare" class="minibar-tab">原价：<span style="color:red" id="min_price">加载中...</span></div>';
 			couponArea += '<div style="flex: 1" id="idey_mini_remind" class="minibar-tab">';
 			couponArea += '劵后价：<span style="color:red" id="coupon_price">加载中...</span>';
 
@@ -1499,7 +1527,7 @@
 					$("ul.tb-meta").after(couponArea);
 				}
 				if (data.originalPrice) {
-					$("#now_price").html('¥' + data.originalPrice);
+					$("#min_price").html('¥' + data.originalPrice);
 				}
 				if (data.actualPrice) {
 					$("#coupon_price").html('¥' + data.actualPrice);
@@ -1547,11 +1575,12 @@
 
 
 			couponArea +=
-				'<span class="blkcolor1">当前价:<span style="color:red" id="now_price">加载中...</span></span>';
+				'<span class="blkcolor1"><span style="color:red" id="now_price">每日捡漏微群</span></span>';
 			couponArea += '<div class="trend-error-info-mini" id="echart-box">';
+            couponArea += '<div><img src="https://tb.idey.cn/tb12.png" width="220"/></div>';
 			couponArea += '</div></div>';
 			couponArea +=
-				'<div style="flex: 1" id="idey_mini_compare" class="minibar-tab">最低价：<span style="color:red" id="min_price">加载中...</span></div>';
+				'<div style="flex: 1" id="idey_mini_compare" class="minibar-tab">原价：<span style="color:red" id="min_price">加载中...</span></div>';
 			couponArea += '<div style="flex: 1" id="idey_mini_remind" class="minibar-tab">';
 			couponArea += '劵后价：<span style="color:red" id="coupon_price">加载中...</span>';
 
@@ -1602,8 +1631,13 @@
 				}
 			}
 			setTimeout(function() {
-
 				$(".summary-price-wrap").after(couponArea);
+                if (data.originPrice) {
+                        $("#min_price").html('¥' + data.originPrice);
+                    }
+                if (data.actualPrice) {
+                    $("#coupon_price").html('¥' + data.actualPrice);
+                }
 			}, 500)
 
 			if (data.couponLink) {
@@ -1629,12 +1663,7 @@
 					text: data.item_link.longUrl
 				});
 			}
-			if (data.item_link.originalPrice) {
-				$("#now_price").html('¥' + data.item_link.originalPrice);
-			}
-			if (data.item_link.actualPrice) {
-				$("#coupon_price").html('¥' + data.item_link.actualPrice);
-			}
+
 			if (data.hbcode != '') {
 				let hbm =
 					'<div style="position:fixed;width:160px;height:160px;right:28px;bottom:50px;z-index:999"><h1 style="color:red;font-size: 11px">使用京东APP领劵购买此商品</h1><div id="hbcode"></div></div>';
