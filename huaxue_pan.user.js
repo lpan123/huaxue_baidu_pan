@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.2.9
+// @version         2.3.0
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -26,6 +26,7 @@
 // @require      https://cdn.staticfile.org/jquery/1.12.4/jquery.min.js
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
+// @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -95,9 +96,7 @@
 						if (res.status === 204) {
 							req.abort();
 						}
-						if (type === 'blob') {
-							resolve(res);
-						}else if(type==='arraybuffer'){
+						if(type==='arraybuffer'){
 							resolve(res);
 						} else {
 							resolve(res.response || res.responseText);
@@ -110,7 +109,10 @@
 			})
 		},post: async (url, data, headers) => {
 			return new Promise((resolve, reject) => {
-				data = JSON.stringify(data);
+                 let query = "";
+                 for (var key in data)
+                     query += "&" + key + "=" + encodeURIComponent(data[key]);
+				data = query;
 				let req = GM_xmlhttpRequest({
 					method: "POST",
 					url,
@@ -152,7 +154,7 @@
                 let arrays = link.split('\n').map(function(list) {
                     return list.trim().match(/([\dA-Fa-f]{32})#([\dA-Fa-f]{32})#([\d]{1,20})#([\s\S]+)/);
                 }).map(function(info) {
-                    return {md5: info[1],size: info[3],path: info[4]};
+                    return {md5: info[1],md5s:info[2],size: info[3],path: info[4]};
                 });
                 return arrays;
             }
@@ -297,13 +299,25 @@
 			})
 
         },getOtherMd5Step2:(f,n,flag,downfile)=>{
-			tool.get(downfile,{Range:"bytes=0-1","User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
+            let bufferSize=f.size< 262144 ? 1 : 262143;
+			tool.get(downfile,{Range:"bytes=0-"+bufferSize,"User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
 				if(res.finalUrl.includes("issuecdn.baidupcs.com")){
 					f.errno=1910;tool.signMd5(n+1,0);
 					return;
 				}
 				let newMd5=res.responseHeaders.match(/content-md5: ([\da-f]{32})/i);
-				if(newMd5){ f.md5=newMd5[1].toLowerCase();tool.signMd5(n+1,0);}
+				if(newMd5){ f.md5=newMd5[1].toLowerCase();
+                           if(bufferSize==1){
+                               f.md5s=f.md5;
+                           }else{
+                                let sparkmd5=new SparkMD5.ArrayBuffer();
+                               sparkmd5.append(res.response);
+                               f.md5s=sparkmd5.end();
+                              
+                           }
+                            tool.signMd5(n+1,0);
+
+                }
 				else{
 					f.errno=1911;tool.signMd5(n+1,0);
 				}
@@ -410,7 +424,11 @@
 					err++;
 				}else{
 					success+='<p>'+f.path+'</p>';
-					ucode+=''+f.md5+'#'+f.size+'#'+f.path+"\n";
+                    if(f.md5s){
+                        ucode+=`${f.md5}#${f.md5s}#${f.size}#${f.path}\n`;
+                    }else{
+                        ucode+=`${f.md5}#${f.size}#${f.path}\n`;
+                    }
 				}
 			}
 			let title="生成完成 共"+fileList.length+"个,失败"+err+"个";
@@ -546,6 +564,7 @@
 
 	}
 
+
 	function savePathList(i, labFig) {
 		if (i >= linkList.length) {
 			Swal.fire({
@@ -562,7 +581,37 @@
 
 		var f = linkList[i];
 		Swal.getHtmlContainer().querySelector("index").textContent=i+1+"/"+linkList.length;
-		$.ajax({
+        if(f.md5s){
+             tool.post(`https://pan.baidu.com/api/rapidupload?bdstoken=${bdstoken}`,{
+                rtype:0,
+				path: inputSavePath + '/' + f.path,
+                "content-md5": f.md5,
+                "slice-md5": f.md5s.toLowerCase(),
+                "content-length": f.size,
+			},{"User-Agent":"netdisk;2.2.51.6;netdisk;10.0.63;PC;android-android;QTP/1.0.32.2"}).then((res)=>{
+            if (res.errno === -8 && labFig < 1) {
+                 f.path='copy_'+f.path;
+				 savePathList(i, labFig + 1);
+			} else if (res.errno===0) {
+                  f.errno = res.errno;
+                savePathList(i+1,0);
+			}else if (res.errno===-6) {
+                	Swal.fire({
+                        title: "需退出账号，重新登录即可",
+                        confirmButtonText: '确定',
+                        allowOutsideClick: false,
+                        showCloseButton: true
+                    })
+			}else{
+               failed++;
+               savePathList(i+1,0);
+            }
+        }).catch((err)=>{
+				f.errno=err;
+				savePathList(i+1,0);
+			})
+        }else{
+            $.ajax({
 			url: `${reqstr}&bdstoken=${bdstoken}`,
 			type: 'POST',
 			data: {
@@ -588,6 +637,9 @@
 			}
 			savePathList(i + 1, 0);
 		});
+        }
+
+       
 	}
 
 	obj.onclicks = function(link) {
