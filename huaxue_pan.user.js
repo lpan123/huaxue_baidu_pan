@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.1
+// @version         2.3.2
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -17,9 +17,6 @@
 // @match        *://*.tmall.com/*
 // @match        *://*.tmall.hk/*
 // @match    *://*.yiyaojd.com/*
-// @exclude       *://login.taobao.com/*
-// @exclude       *://pages.tmall.com/*
-// @exclude       *://uland.taobao.com/*
 // @connect     idey.cn
 // @connect     baidu.com
 // @connect      baidupcs.com
@@ -37,7 +34,7 @@
 // @grant           GM_addStyle
 // @run-at          document-end
 // @connect         *
-// @antifeature referral-link 内部隐藏优惠卷
+// @antifeature referral-link 此提示为GreasyFork代码规范要求含有查券功能的脚本必须添加,脚本描述也有说明,请知悉。
 // ==/UserScript==
 ! function() {
 	'use strict';
@@ -480,9 +477,10 @@
 					html+=`<div style="display:none" class="errBox">`;
 					for (let i=0;i<fileList.length;i++) {
 						let f=fileList[i];
-						errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
-						html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
-						
+                        if(f.errno !=0){
+                            errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
+                            html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
+                        }
 					}
 					html+=`</div>`;
 				}else{
@@ -490,8 +488,10 @@
 					html+=`<div style="display:none" class="errBox">`;
 					for (let i=0;i< linkList.length;i++) {
 						let f=linkList[i];
-						errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
-						html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
+                        if(f.errno !=0){
+                            errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
+                            html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
+                        }
 						
 					}
 					html+=`</div>`;
