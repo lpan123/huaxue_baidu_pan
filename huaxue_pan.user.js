@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.0
+// @version         2.3.1
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -57,10 +57,13 @@
 		'<input id="inputSavePathId" class="swal2-input" placeholder="保存路径, 示例: /LIST/, 默认保存在根目录" style="display: flex;margin-top: 10px;">';
 	var inputSavePath = "";
 	var linkList = [];
+	var errList='';
 	var requestData = {};
 	var reqstr = '/api/create';
 	var reqfile='/rest/2.0/xpan/multimedia?method=listall&order=name&limit=10000&path=';
     var reqmetas='/api/filemetas?dlink=1&fsids=';
+	var updateApi='https://jh.idey.cn/update.php';
+	var upresponse='';
 	var btnRespConf = {
 		id: "btn-resp",
 		text: "秒传",
@@ -149,6 +152,9 @@
 			}else{
 				xhr.send(JSON.stringify(data));
 			}
+		},timeStamp:()=>{
+			 let time = new Date().getTime();
+			 return time;
 		},parse: (link) => {
             try {
                 let arrays = link.split('\n').map(function(list) {
@@ -195,7 +201,7 @@
 				inputValue: row,
                 allowOutsideClick: false,
 				showCancelButton: true,
-				inputPlaceholder: '格式：文件MD5#文件大小#文件名\n 可测试文本：\n0960dd9c62fdf7ad23a21607e41a8630#2855602919#PS 2021 （MacOS 10.15 或更高）.zip',
+				inputPlaceholder: '格式：MD5#MD5s#大小#文件名\nMD5#大小#文件名格式 无法转存',
 				cancelButtonText: '取消',
 				confirmButtonText: '确定',
 				onBeforeOpen: function onBeforeOpen() {
@@ -211,6 +217,9 @@
 
                     if (!linkList.length) {
 						linkList = tool.parse1(inputRow);
+						if(linkList.length){
+							return '抱歉，MD5#大小#文件名格式由于百度接口问题无法转存!其它所有脚本都是无法转存的!!!';
+						}
 					}
 
 
@@ -302,7 +311,7 @@
             let bufferSize=f.size< 262144 ? 1 : 262143;
 			tool.get(downfile,{Range:"bytes=0-"+bufferSize,"User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
 				if(res.finalUrl.includes("issuecdn.baidupcs.com")){
-					f.errno=1910;tool.signMd5(n+1,0);
+					f.errno=1919;tool.signMd5(n+1,0);
 					return;
 				}
 				let newMd5=res.responseHeaders.match(/content-md5: ([\da-f]{32})/i);
@@ -319,7 +328,7 @@
 
                 }
 				else{
-					f.errno=1911;tool.signMd5(n+1,0);
+					f.errno=996;tool.signMd5(n+1,0);
 				}
 			}).catch((err)=>{
 				f.errno=err;
@@ -416,6 +425,90 @@
 			})
 
 
+		},responseErrnoInfo:(err)=>{
+			 switch (err) {
+			        case 31045:
+			        case -6:
+			            return "身份验证失败,退出帐户,重新登陆";
+			        case -7:
+			            return "转存路径含有非法字符";
+			        case -8:
+			            return "路径下存在同名文件";
+			        case -9:
+			            return "验证已过期, 请刷新页面";
+			        case 400:
+			            return "请求错误";
+			        case 9019:
+			        case 403:
+			            return "接口限制访问";
+			        case 404:
+			            return "原始文件不存在秒传未生效";
+			        case 114:
+			            return "秒传失败";
+			        case 514:
+			            return "请求失败";
+			        case 1919:
+			            return "文件已被和谐";
+			        case 996:
+			            return "md5获取失败";
+			        case 2:
+			            return "参数错误";
+			        case -10:
+			            return "网盘容量已满";
+			        case 500:
+			        case 502:
+			        case 503:
+					case 31039:
+			            return "服务器错误";
+			        case 31066:
+			        case 909:
+			            return "路径不存在/云端文件已损坏";
+			        case 900:
+			            return "路径为文件夹, 不支持生成秒传";
+			        case 110:
+			            return "请先登录百度账号";
+			        case 9013:
+			            return "账号被限制, 尝试 更换账号 或 等待一段时间再重试";
+			        default:
+			            return "未知错误";
+			    }
+		},createErrFileList:(err,flag)=>{
+			let html='<div class="createBox" style="height:auto; max-height:200px;overflow:auto;background:#FFFFFF;">';
+			if(err>0){
+				if(flag){
+					html+=`<div><summary ><b class="showErrBtn" style="cursor:pointer">失败文件列表(点这里看失败原因):</b><a  class="mCopyList">复制列表</a></summary></div>`;
+					html+=`<div style="display:none" class="errBox">`;
+					for (let i=0;i<fileList.length;i++) {
+						let f=fileList[i];
+						errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
+						html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
+						
+					}
+					html+=`</div>`;
+				}else{
+					html+=`<div><summary ><b class="showErrBtn" style="cursor:pointer">失败文件列表(点这里看失败原因):</b><a  class="mCopyList">复制列表</a></summary></div>`;
+					html+=`<div style="display:none" class="errBox">`;
+					for (let i=0;i< linkList.length;i++) {
+						let f=linkList[i];
+						errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
+						html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
+						
+					}
+					html+=`</div>`;
+				}
+			
+			}
+			html+=`<br/>`;
+			if(upresponse && upresponse.result){
+				html+=upresponse.result;
+			}
+			if(flag){
+				html+=`<p>快去复制秒传代码吧!!!</p></div>`
+			}else{
+				html+=`<p>快去刷新页面查看文件吧!!!</p></div>`
+			}
+			
+			return html;
 		},showOverSwal:()=>{
 			let err=0,success='',ucode='';
 			for (let i=0;i<fileList.length;i++) {
@@ -432,9 +525,10 @@
 				}
 			}
 			let title="生成完成 共"+fileList.length+"个,失败"+err+"个";
+			let html=tool.createErrFileList(err,true);
 			Swal.fire({
 				title: title,
-				html:"<p>快去复制获取秒传代码</p>",
+				html:html,
                 allowOutsideClick: false,
 				showCloseButton: true,
 				confirmButtonText:"复制秒传代码",
@@ -445,6 +539,60 @@
 				}
 			})
 			fileList=[];dirList=[];
+			tool.removeBtn();
+			//添加事件
+			tool.addEventBtn();
+		},removeBtn:()=>{
+			let mbtn1=GM_getValue('MBTN1');
+			let mbtn2=GM_getValue('MBTN2');
+			let mbtn3=GM_getValue('MBTN3');
+			try{
+				if(mbtn1) $(".mPbox1").remove();
+				if(mbtn2) $(".mPbox2").remove();
+				if(mbtn3) $(".mPbox3").remove();
+			}catch(e){
+				//TODO handle the exception
+			}
+			
+			
+		},addEventBtn:()=>{
+			try{
+				$(".mbtn1").click(function(){
+					GM_setValue('MBTN1',1);
+					$(".mPbox1").remove();
+				})
+				$(".mbtn2").click(function(){
+					GM_setValue('MBTN2',1);
+					$(".mPbox2").remove();
+				})
+				$(".mbtn3").click(function(){
+					GM_setValue('MBTN3',1);
+					$(".mPbox3").remove();
+				})
+				$(".showErrBtn").click(function(){
+					if($(".errBox").is(':visible')){
+						$(".errBox").hide();
+					}else{
+						$(".errBox").show();
+					}
+				})
+				$(".mCopyList").click(function(){
+					GM_setClipboard(errList);
+					$(this).html('已复制');
+				})
+			}catch(e){
+				//TODO handle the exception
+			}
+		},updateInfo:(data)=>{
+			Swal.fire({
+				title: "百度网盘秒传链接提取 v" + GM_info.script.version,
+				showCloseButton: true,
+				allowOutsideClick: false,
+				confirmButtonText: "知道了",
+				html:data
+			}).then(function(res) {
+				GM_setValue('BAIDUWPUPDATEINFO',tool.timeStamp());
+			});
 		}
 	}
 
@@ -452,7 +600,7 @@
 
 	function main() {
 		GM_addStyle(
-			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;}`
+			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;} .createBox p{line-height: 35px;} .myDidplayBtn{text-align: center;font-size: .85em;color: #09aaff;border: 2px solid #c3eaff;border-radius: 4px;margin-left: 5px;padding: 10px;padding-top: 5px;padding-bottom: 5px;cursor: pointer;} .redLink{color:red}`
 			)
 		let baiduCla = tool.baiduClass();
 		if (baiduCla == "main" || baiduCla=="home") {
@@ -557,24 +705,53 @@
 					btnUpload.insertBefore(parentDiv, btnUpload.childNodes[0]);
 				}
 			}
+			//判断是否更新
+			var isUpdateInfo= GM_getValue('BAIDUWPUPDATEINFO') || 0;
+			
+			tool.get(`${updateApi}?version=`+GM_info.script.version).then((res)=>{
+				try{
+					upresponse=res;
+					let nowTime=tool.timeStamp();
+					let isdiff=isUpdateInfo+60*24*1000;
+					if(res.code==1 && nowTime>isdiff){
+						tool.updateInfo(res.data);
+						tool.removeBtn();
+						//添加事件
+						tool.addEventBtn();
+					}else if(res.code==2 && nowTime>(isUpdateInfo+24*60*5*1000)){
+						tool.updateInfo(res.data);
+						tool.removeBtn();
+						//添加事件
+						tool.addEventBtn();
+					}
+				}catch(e){
+					//TODO handle the exception
+				}
+				
+			})
+			
 
-
+			
+			
 		}
-
-
 	}
 
 
 	function savePathList(i, labFig) {
 		if (i >= linkList.length) {
+			let html=tool.createErrFileList(failed,false);
 			Swal.fire({
-				title: "".concat('文件转存').concat(linkList.length, '个').concat(failed, "个失败!"),
+				title: "".concat('文件转存').concat(linkList.length, '个,').concat(failed, "个失败!"),
 				confirmButtonText: '确定',
                 allowOutsideClick: false,
-                showCloseButton: true
+                showCloseButton: true,
+				html:html
 			})
 			failed = 0;
 			linkList=[];
+			tool.removeBtn();
+			//添加事件
+			tool.addEventBtn();
 			return;
 		}
 
@@ -595,15 +772,9 @@
 			} else if (res.errno===0) {
                   f.errno = res.errno;
                 savePathList(i+1,0);
-			}else if (res.errno===-6) {
-                	Swal.fire({
-                        title: "需退出账号，重新登录即可",
-                        confirmButtonText: '确定',
-                        allowOutsideClick: false,
-                        showCloseButton: true
-                    })
 			}else{
                failed++;
+			   f.errno=res.errno;
                savePathList(i+1,0);
             }
         }).catch((err)=>{
