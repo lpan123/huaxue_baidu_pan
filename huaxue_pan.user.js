@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.3
+// @version         2.3.4
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -24,7 +24,7 @@
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
 // @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
-// @require         https://cdn.jsdelivr.net/npm/js-base64
+// @require         https://cdn.jsdelivr.net/npm/js-base64@3.7.2/base64.min.js
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -495,7 +495,7 @@
 					html+=`<div style="display:none" class="errBox">`;
 					for (let i=0;i<fileList.length;i++) {
 						let f=fileList[i];
-                        if(f.errno !=0){
+                        if(f.errno !=undefined && f.errno !=0){
                             errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
                             html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
                         }
@@ -506,7 +506,7 @@
 					html+=`<div style="display:none" class="errBox">`;
 					for (let i=0;i< linkList.length;i++) {
 						let f=linkList[i];
-                        if(f.errno !=0){
+                          if(f.errno !=undefined && f.errno !=0){
                             errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
                             html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
                         }
@@ -548,7 +548,7 @@
 				title: title,
 				html:html,
                 allowOutsideClick: false,
-				showCloseButton: false,
+				showCloseButton: true,
 				showConfirmButton:true,
 				confirmButtonText:"复制秒传代码",
 				showDenyButton:true,
