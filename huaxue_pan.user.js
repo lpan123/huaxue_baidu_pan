@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.2
+// @version         2.3.3
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -24,6 +24,7 @@
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
 // @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
+// @require         https://cdn.jsdelivr.net/npm/js-base64
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -32,7 +33,7 @@
 // @grant           GM_info
 // @grant           GM_getResourceText
 // @grant           GM_addStyle
-// @run-at          document-end
+// @run-at          document-body
 // @connect         *
 // @antifeature referral-link 此提示为GreasyFork代码规范要求含有查券功能的脚本必须添加,脚本描述也有说明,请知悉。
 // ==/UserScript==
@@ -149,6 +150,20 @@
 			}else{
 				xhr.send(JSON.stringify(data));
 			}
+		},charRecoveStr:(str)=>{
+			  var newStr = "";
+			    for (var i = 0; i < str.length; i++) {
+			        var reverseChar = void 0;
+			        if (str.charAt(i) >= "a")
+			            reverseChar = str.charAt(i).toUpperCase();
+			        else if (str.charAt(i) >= "A")
+			            reverseChar = str.charAt(i).toLowerCase();
+			        else
+			            reverseChar = str.charAt(i);
+			        newStr += reverseChar;
+			    }
+			    return newStr;
+
 		},timeStamp:()=>{
 			 let time = new Date().getTime();
 			 return time;
@@ -266,35 +281,38 @@
                 tool.signMd5(n+1,0);
 				return;
 			}
-			$.ajax({
-				url: `${reqstr}&bdstoken=${bdstoken}`,
-				type: 'POST',
-				dataType:'json',
-				data: {
-					block_list: JSON.stringify([f.md5.toLowerCase()]),
-					path: f.path,
-					size: f.size,
-					isdir: 0,
-					rtype: 3,
-					is_revision: 1
-				},
-				success:function(res){
-					if(res.errno===2){
-						tool.reqAjax(f,n,++num)
-					}else if(res.errno===0){
-						tool.signMd5(n+1,0);
-					}else if(res.errno===31190){
-						tool.getOtherMd5Step1(f,n,0);
-					}else{
-                        tool.getOtherMd5Step1(f,n,0);
-					}
-				},
-				error:function(code){
-					f.errno=code;
-					tool.signMd5(n+1);
-				}
+			tool.getOtherMd5Step1(f,n,0);
+			// $.ajax({
+			// 	url: `${reqstr}&bdstoken=${bdstoken}`,
+			// 	type: 'POST',
+			// 	dataType:'json',
+			// 	data: {
+			// 		block_list: JSON.stringify([f.md5.toLowerCase()]),
+			// 		path: f.path,
+			// 		size: f.size,
+			// 		isdir: 0,
+			// 		rtype: 3,
+			// 		is_revision: 1
+			// 	},
+			// 	success:function(res){
+			// 		console.log('res',res);
+			// 		if(res.errno===2){
+			// 			tool.reqAjax(f,n,++num)
+			// 		}else if(res.errno===0){
+			// 			tool.signMd5(n+1,0);
+			// 		}else if(res.errno===31190){
+			// 			tool.getOtherMd5Step1(f,n,0);
+			// 		}else{
 
-			})
+   //                      tool.getOtherMd5Step1(f,n,0);
+			// 		}
+			// 	},
+			// 	error:function(code){
+			// 		f.errno=code;
+			// 		tool.signMd5(n+1);
+			// 	}
+
+			// })
 		},getOtherMd5Step1:(f,n,flag)=>{
             let fsid=JSON.stringify([String(f.fs_id)]);
 			tool.get(`${reqmetas}${fsid}`,{"User-Agent":"netdisk;"},'json').then((res)=>{
@@ -319,7 +337,7 @@
                                 let sparkmd5=new SparkMD5.ArrayBuffer();
                                sparkmd5.append(res.response);
                                f.md5s=sparkmd5.end();
-                              
+
                            }
                             tool.signMd5(n+1,0);
 
@@ -492,11 +510,11 @@
                             errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
                             html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
                         }
-						
+
 					}
 					html+=`</div>`;
 				}
-			
+
 			}
 			html+=`<br/>`;
 			if(upresponse && upresponse.result){
@@ -507,10 +525,10 @@
 			}else{
 				html+=`<p>快去刷新页面查看文件吧!!!</p></div>`
 			}
-			
+
 			return html;
 		},showOverSwal:()=>{
-			let err=0,success='',ucode='';
+			let err=0,success='',ucode='',ecode='https://pan.baidu.com/#bdlink=';
 			for (let i=0;i<fileList.length;i++) {
 				let f=fileList[i];
 				if(f.errno || f.isdir==1){
@@ -530,13 +548,23 @@
 				title: title,
 				html:html,
                 allowOutsideClick: false,
-				showCloseButton: true,
+				showCloseButton: false,
+				showConfirmButton:true,
 				confirmButtonText:"复制秒传代码",
+				showDenyButton:true,
+				denyButtonText:"提取一键秒传代码",
+				preDeny:function(){
+					let newCode=ucode.replace(/(#\/.+\/)|(#\/)/g, "#");
+					GM_setClipboard(ecode+Base64.encode(newCode));
+					Swal.getDenyButton().innerText="一键秒传提取成功";
+					return false;
+				},
 				preConfirm:function(){
 					GM_setClipboard(ucode.replace(/(#\/.+\/)|(#\/)/g, "#"));
 					Swal.getConfirmButton().innerText="复制成功";
 					return false;
 				}
+
 			})
 			fileList=[];dirList=[];
 			tool.removeBtn();
@@ -553,8 +581,8 @@
 			}catch(e){
 				//TODO handle the exception
 			}
-			
-			
+
+
 		},addEventBtn:()=>{
 			try{
 				$(".mbtn1").click(function(){
@@ -595,6 +623,22 @@
 			});
 		}
 	}
+	function init(){
+		//检查是否一键秒传代码
+		 let base64code = location.href.match(/#bdlink=([\da-zA-Z+/=]+)/);
+		 if(base64code) base64code=base64code[1];
+		 if(base64code){
+			GM_setValue('BASE64CODELINK',base64code);
+		 }
+		if (["interactive", "complete"].includes(document.readyState)){
+			main();
+		}
+		else{
+			window.addEventListener("DOMContentLoaded", main);
+		}
+
+
+	}
 
 
 
@@ -602,6 +646,8 @@
 		GM_addStyle(
 			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;} .createBox p{line-height: 35px;} .myDidplayBtn{text-align: center;font-size: .85em;color: #09aaff;border: 2px solid #c3eaff;border-radius: 4px;margin-left: 5px;padding: 10px;padding-top: 5px;padding-bottom: 5px;cursor: pointer;} .redLink{color:red}`
 			)
+
+
 		let baiduCla = tool.baiduClass();
 		if (baiduCla == "main" || baiduCla=="home") {
 			// 创建按钮 START
@@ -705,12 +751,28 @@
 					btnUpload.insertBefore(parentDiv, btnUpload.childNodes[0]);
 				}
 			}
-			//判断是否更新
-			var isUpdateInfo= GM_getValue('BAIDUWPUPDATEINFO') || 0;
-			
-			tool.get(`${updateApi}?version=`+GM_info.script.version).then((res)=>{
-				try{
-					upresponse=res;
+
+			let base64code=GM_getValue('BASE64CODELINK');
+			if(base64code){
+				base64code=Base64.decode(base64code);
+				tool.inputUserValue(base64code);
+				 GM_setValue('BASE64CODELINK','');
+				 updateVersion(true);
+			}else{
+				updateVersion(false);
+			}
+
+
+		}
+	}
+
+	function updateVersion(flag){
+		//判断是否更新
+		var isUpdateInfo= GM_getValue('BAIDUWPUPDATEINFO') || 0;
+		tool.get(`${updateApi}?version=`+GM_info.script.version).then((res)=>{
+			try{
+				upresponse=res;
+				if(!flag){
 					let nowTime=tool.timeStamp();
 					let isdiff=isUpdateInfo+60*24*1000;
 					if(res.code==1 && nowTime>isdiff){
@@ -724,16 +786,11 @@
 						//添加事件
 						tool.addEventBtn();
 					}
-				}catch(e){
-					//TODO handle the exception
 				}
-				
-			})
-			
-
-			
-			
-		}
+			}catch(e){
+				//TODO handle the exception
+			}
+		})
 	}
 
 
@@ -756,6 +813,8 @@
 		}
 
 
+
+
 		var f = linkList[i];
 		Swal.getHtmlContainer().querySelector("index").textContent=i+1+"/"+linkList.length;
         if(f.md5s){
@@ -766,8 +825,11 @@
                 "slice-md5": f.md5s.toLowerCase(),
                 "content-length": f.size,
 			},{"User-Agent":"netdisk;2.2.51.6;netdisk;10.0.63;PC;android-android;QTP/1.0.32.2"}).then((res)=>{
-            if (res.errno === -8 && labFig < 1) {
+            if (res.errno === -8 && labFig < 2) {
                  f.path='copy_'+f.path;
+				 savePathList(i, labFig + 1);
+			}else if (res.errno === 404 && labFig < 2) {
+                 f.md5=tool.charRecoveStr(f.md5);
 				 savePathList(i, labFig + 1);
 			} else if (res.errno===0) {
                   f.errno = res.errno;
@@ -775,12 +837,9 @@
 			}else{
                failed++;
 			   f.errno=res.errno;
-               savePathList(i+1,0);
+              if(labFig<=0) savePathList(i+1,0);
             }
-        }).catch((err)=>{
-				f.errno=err;
-				savePathList(i+1,0);
-			})
+        })
         }else{
             $.ajax({
 			url: `${reqstr}&bdstoken=${bdstoken}`,
@@ -810,7 +869,8 @@
 		});
         }
 
-       
+
+
 	}
 
 	obj.onclicks = function(link) {
@@ -1755,7 +1815,7 @@
 				if (data.actualPrice) {
 					$("#coupon_price").html('¥' + data.actualPrice);
 				}
-			}, 1800)
+			}, 2000)
 			if (data.shortUrl) {
 				let hbm =
 					'<div style="position:fixed;width:170px;height:170px;right:28px;bottom:10px;z-index: 99999999;"><h1 style="color:red;font-size: 11px">使用淘宝APP领劵购买此商品</h1><div id="hbcode"></div></div>';
@@ -1861,7 +1921,7 @@
                 if (data.actualPrice) {
                     $("#coupon_price").html('¥' + data.actualPrice);
                 }
-			}, 500)
+			},800)
 
 			if (data.couponLink) {
 				$('#qrcode').qrcode({
@@ -1945,7 +2005,7 @@
 								height: 180,
 								text: data
 							});
-						}, 500)
+						}, 800)
 					});
 				} else {
 					$(document).ready(function() {
@@ -1961,7 +2021,7 @@
 								height: 380,
 								text: location.href
 							});
-						}, 500)
+						}, 800)
 					});
 				}
 
@@ -1984,12 +2044,13 @@
 						height: 380,
 						text: location.href
 					});
-				}, 500)
+				}, 800)
 			});
 		}
 
 	} else if (pagetype == 'baidu_pan') {
-		main();
+		 // 绑定入口函数到dom事件
+		    init();
 	}
 
 }();
