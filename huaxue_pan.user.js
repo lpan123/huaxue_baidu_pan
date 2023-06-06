@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.4
+// @version         2.3.5
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -164,6 +164,9 @@
 			    }
 			    return newStr;
 
+		},changePath:(p)=>{
+			let fix = p.substring(p.lastIndexOf(".") + 1); // 获取后缀
+			return p.substring(0, p.length - fix.length) + tool.charRecoveStr(fix);
 		},timeStamp:()=>{
 			 let time = new Date().getTime();
 			 return time;
@@ -812,9 +815,6 @@
 			return;
 		}
 
-
-
-
 		var f = linkList[i];
 		Swal.getHtmlContainer().querySelector("index").textContent=i+1+"/"+linkList.length;
         if(f.md5s){
@@ -831,7 +831,10 @@
 			}else if (res.errno === 404 && labFig < 2) {
                  f.md5=tool.charRecoveStr(f.md5);
 				 savePathList(i, labFig + 1);
-			} else if (res.errno===0) {
+			}else if (res.errno === 31039 && labFig < 2) {
+                 f.path=tool.changePath(f.path);
+				 savePathList(i, labFig + 1);
+			}else if (res.errno===0) {
                   f.errno = res.errno;
                 savePathList(i+1,0);
 			}else{
