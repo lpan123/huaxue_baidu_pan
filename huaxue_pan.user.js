@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.5
+// @version         2.3.6
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -24,7 +24,7 @@
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
 // @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
-// @require         https://cdn.jsdelivr.net/npm/js-base64@3.7.2/base64.min.js
+// @require         https://cdn.jsdelivr.net/npm/js-base64@3.7.5/base64.min.js
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -33,7 +33,7 @@
 // @grant           GM_info
 // @grant           GM_getResourceText
 // @grant           GM_addStyle
-// @run-at          document-body
+// @run-at          document-start
 // @connect         *
 // @antifeature referral-link 此提示为GreasyFork代码规范要求含有查券功能的脚本必须添加,脚本描述也有说明,请知悉。
 // ==/UserScript==
