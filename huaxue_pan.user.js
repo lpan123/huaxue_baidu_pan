@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.6
+// @version         2.3.8
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -24,7 +24,7 @@
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
 // @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
-// @require         https://cdn.jsdelivr.net/npm/js-base64@3.7.5/base64.min.js
+// @require https://greasyfork.org/scripts/468166-base64%E5%BA%93/code/Base64%E5%BA%93.js?version=1201651
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -164,6 +164,12 @@
 			    }
 			    return newStr;
 
+		},queryUrlPath:()=>{
+			let path=location.href.match(/path=(.+?)(?:&|$)/);
+			if (path)
+                 return decodeURIComponent(path[1]);
+            else
+                return "";
 		},changePath:(p)=>{
 			let fix = p.substring(p.lastIndexOf(".") + 1); // 获取后缀
 			return p.substring(0, p.length - fix.length) + tool.charRecoveStr(fix);
@@ -223,6 +229,9 @@
 					let d = document.createElement('div');
 					d.innerHTML += inputSavePathHTML;
 					Swal.getContent().appendChild(d);
+					let p=tool.queryUrlPath();
+					if(p) document.getElementById('inputSavePathId').value=p;
+
 				},
 				inputValidator: function inputValidator(inputRow) {
 					if (!inputRow) {
@@ -352,6 +361,18 @@
 				f.errno=err;
 				tool.signMd5(n+1,0);
 			})
+        },randMd5:(str)=>{
+            let t = [];
+            for (let _i = 0, chars = str; _i < chars.length; _i++) {
+                var i = chars[_i];
+                if (!Math.round(Math.random())) {
+                    t.push(i.toLowerCase());
+                }
+                else {
+                    t.push(i.toUpperCase());
+                }
+            }
+            return t.join("");
         },encodeMd5:(md5)=>{
 			if (!((parseInt(md5[9]) >= 0 && parseInt(md5[9]) <= 9) ||
 			        (md5[9] >= "a" && md5[9] <= "f")))
@@ -797,6 +818,7 @@
 	}
 
 
+
 	function savePathList(i, labFig) {
 		if (i >= linkList.length) {
 			let html=tool.createErrFileList(failed,false);
@@ -817,6 +839,7 @@
 
 		var f = linkList[i];
 		Swal.getHtmlContainer().querySelector("index").textContent=i+1+"/"+linkList.length;
+        f.path.replace(/["\\\:*?<>|]/, "");
         if(f.md5s){
              tool.post(`https://pan.baidu.com/api/rapidupload?bdstoken=${bdstoken}`,{
                 rtype:0,
@@ -829,7 +852,12 @@
                  f.path='copy_'+f.path;
 				 savePathList(i, labFig + 1);
 			}else if (res.errno === 404 && labFig < 2) {
-                 f.md5=tool.charRecoveStr(f.md5);
+                 if(labFig==1){
+                      f.md5=tool.randMd5(f.md5);
+                 }else{
+                      f.md5=tool.charRecoveStr(f.md5);
+                 }
+
 				 savePathList(i, labFig + 1);
 			}else if (res.errno === 31039 && labFig < 2) {
                  f.path=tool.changePath(f.path);
@@ -840,7 +868,7 @@
 			}else{
                failed++;
 			   f.errno=res.errno;
-              if(labFig<=0) savePathList(i+1,0);
+              if(labFig<=0 || linkList.length==1) savePathList(i+1,0);
             }
         })
         }else{
@@ -1764,7 +1792,7 @@
 			couponArea +=
 				'<span class="blkcolor1"><span style="color:red" id="now_price">每日捡漏微群</span></span>';
 			couponArea += '<div class="trend-error-info-mini" id="echart-box">';
-            couponArea += '<div><img src="https://tb.idey.cn/tb12.png" width="220"/></div>';
+            couponArea += '<div><img src="https://tb.idey.cn/tb12.png?'+new Date().getTime()+'"  width="220"/></div>';
 			couponArea += '</div></div>';
 			couponArea +=
 				'<div style="flex: 1" id="idey_mini_compare" class="minibar-tab">原价：<span style="color:red" id="min_price">加载中...</span></div>';
@@ -1863,7 +1891,7 @@
 			couponArea +=
 				'<span class="blkcolor1"><span style="color:red" id="now_price">每日捡漏微群</span></span>';
 			couponArea += '<div class="trend-error-info-mini" id="echart-box">';
-            couponArea += '<div><img src="https://tb.idey.cn/tb12.png" width="220"/></div>';
+            couponArea += '<div><img src="https://tb.idey.cn/tb12.png?'+new Date().getTime()+'" width="220"/></div>';
 			couponArea += '</div></div>';
 			couponArea +=
 				'<div style="flex: 1" id="idey_mini_compare" class="minibar-tab">原价：<span style="color:red" id="min_price">加载中...</span></div>';
@@ -2053,7 +2081,11 @@
 
 	} else if (pagetype == 'baidu_pan') {
 		 // 绑定入口函数到dom事件
+        try {
 		    init();
+        }catch (err) {
+            console.log('脚本冲突或者被拦截',err);
+        }
 	}
 
 }();
