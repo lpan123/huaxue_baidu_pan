@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            百度网盘秒传链接提取(最新可维护版本)
 // @namespace       taobao.idey.cn/index
-// @version         2.3.8
+// @version         2.4.2
 // @description     用于提取和生成百度网盘秒传链接,淘宝,京东优惠卷查询
 // @author          免费王子
 // @license           AGPL
@@ -22,7 +22,6 @@
 // @connect      baidupcs.com
 // @require      https://cdn.staticfile.org/jquery/1.12.4/jquery.min.js
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
-// @require        https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js
 // @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
 // @require https://greasyfork.org/scripts/468166-base64%E5%BA%93/code/Base64%E5%BA%93.js?version=1201651
 // @grant           GM_setValue
@@ -52,13 +51,15 @@
 	var dirList=[];
 	var hosturl = 'https://wk.idey.cn/red.html?url=';
 	var inputSavePathHTML =
-		'<input id="inputSavePathId" class="swal2-input" placeholder="保存路径, 示例: /LIST/, 默认保存在根目录" style="display: flex;margin-top: 10px;">';
+		'<input id="inputSavePathId" class="swal2-input" placeholder="保存路径, 示例:/BDLIST, 默认保存在BDLIST目录" style="display: flex;margin-top: 10px;font-size:0.95em">';
 	var inputSavePath = "";
 	var linkList = [];
 	var errList='';
+	var defaultPath='/BDLIST';
 	var requestData = {};
 	var reqstr = '/api/create';
 	var reqfile='/rest/2.0/xpan/multimedia?method=listall&order=name&limit=10000&path=';
+	var reqold = "https://pcs.baidu.com/rest/2.0/pcs/file?app_id=778750&method=download";
     var reqmetas='/api/filemetas?dlink=1&fsids=';
 	var updateApi='https://jh.idey.cn/update.php';
 	var upresponse='';
@@ -173,6 +174,13 @@
 		},changePath:(p)=>{
 			let fix = p.substring(p.lastIndexOf(".") + 1); // 获取后缀
 			return p.substring(0, p.length - fix.length) + tool.charRecoveStr(fix);
+		},loadAlert:async()=>{
+			let url='https://unpkg.com/sweetalert2@10.16.6/dist/sweetalert2.all.min.js';
+			var head = document.getElementsByTagName('head')[0];
+			var script = document.createElement('script');
+			script.type = 'text/javascript';
+			script.src = url;
+			head.appendChild(script);
 		},timeStamp:()=>{
 			 let time = new Date().getTime();
 			 return time;
@@ -199,7 +207,7 @@
 
         },baiduClass:()=>{
 			if (
-				location.href.indexOf("//pan.baidu.com/disk/main") > 0
+				location.href.indexOf("//pan.baidu.com/disk/main") > 0 || location.href.indexOf("//yun.baidu.com/disk/main")>0
 			) {
 				return 'main';
 			} else if (
@@ -211,7 +219,7 @@
 			) {
 				return 'synch';
 			}else if (
-				location.href.indexOf("//pan.baidu.com/disk/home") > 0
+				location.href.indexOf("//pan.baidu.com/disk/home") > 0 || location.href.indexOf("//yun.baidu.com/disk/home")>0
 			) {
 				return 'home';
 			}
@@ -251,7 +259,9 @@
 						return '抱歉，链接无法识别哦';
 					}
 
+
 					inputSavePath = document.getElementById('inputSavePathId').value;
+					if(!inputSavePath) inputSavePath=defaultPath;
 
 
 				}
@@ -335,6 +345,33 @@
 			})
 
         },getOtherMd5Step2:(f,n,flag,downfile)=>{
+            let bufferSize=f.size< 262144 ? 1 : 262143;
+			tool.get(downfile,{Range:"bytes=0-"+bufferSize,"User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
+				if(res.finalUrl.includes("issuecdn.baidupcs.com")){
+					f.errno=1919;tool.signMd5(n+1,0);
+					return;
+				}
+				let newMd5=res.responseHeaders.match(/content-md5: ([\da-f]{32})/i);
+				if(newMd5){ f.md5=newMd5[1].toLowerCase();
+                           if(bufferSize==1){
+                               f.md5s=f.md5;
+                           }else{
+                                let sparkmd5=new SparkMD5.ArrayBuffer();
+                               sparkmd5.append(res.response);
+                               f.md5s=sparkmd5.end();
+
+                           }
+                            tool.signMd5(n+1,0);
+
+                }
+				else{
+					tool.getOtherMd5Step3(f,n,flag,`${reqold}&path=${encodeURIComponent(f.path)}`);
+				}
+			}).catch((err)=>{
+				f.errno=err;
+				tool.signMd5(n+1,0);
+			})
+        },getOtherMd5Step3:(f,n,flag,downfile)=>{
             let bufferSize=f.size< 262144 ? 1 : 262143;
 			tool.get(downfile,{Range:"bytes=0-"+bufferSize,"User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
 				if(res.finalUrl.includes("issuecdn.baidupcs.com")){
@@ -519,19 +556,19 @@
 					html+=`<div style="display:none" class="errBox">`;
 					for (let i=0;i<fileList.length;i++) {
 						let f=fileList[i];
-                        if(f.errno !=undefined && f.errno !=0){
+                        if(f.errno !=undefined && f.errno !='' && f.errno !=0){
                             errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
                             html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
                         }
 					}
 					html+=`</div>`;
 				}else{
-					html+=`<div><summary ><b class="showErrBtn" style="cursor:pointer">失败文件列表(点这里看失败原因):</b><a  class="mCopyList">复制列表</a></summary></div>`;
+					html+=`<div><summary ><b class="showErrBtn" style="cursor:pointer">失败文件列表(点这里看失败原因):</b><a  class="mCopyList">复制重新转存</a></summary></div>`;
 					html+=`<div style="display:none" class="errBox">`;
 					for (let i=0;i< linkList.length;i++) {
 						let f=linkList[i];
-                          if(f.errno !=undefined && f.errno !=0){
-                            errList+=`${f.path}(${f.errno})${tool.responseErrnoInfo(f.errno)}\n`;
+                          if(f.errno !=undefined && f.errno !='' && f.errno !=0){
+                            errList+=`${f.md5}#${f.md5s}#${f.size}#${f.path}\n`;
                             html+='<p style="font-size:12px;line-height:22px">'+f.path+'<span class="redLink">('+f.errno+')'+tool.responseErrnoInfo(f.errno)+'</span></p>'
                         }
 
@@ -670,8 +707,7 @@
 		GM_addStyle(
 			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;} .createBox p{line-height: 35px;} .myDidplayBtn{text-align: center;font-size: .85em;color: #09aaff;border: 2px solid #c3eaff;border-radius: 4px;margin-left: 5px;padding: 10px;padding-top: 5px;padding-bottom: 5px;cursor: pointer;} .redLink{color:red}`
 			)
-
-
+		 tool.loadAlert();
 		let baiduCla = tool.baiduClass();
 		if (baiduCla == "main" || baiduCla=="home") {
 			// 创建按钮 START
@@ -744,7 +780,7 @@
 					let parent = null;
 					let btnUpload = document.querySelector('[node-type=upload]'); // 管理页面：【上传】
                     btnUpload.style.maxWidth = '80px';
-                     btnUpload.style.display = 'inline-block';
+                    btnUpload.style.display = 'inline-block';
 					parent = btnUpload.parentNode;
 					parent.insertBefore(btnResp, parent.childNodes[1]);
 					parent.insertBefore(btnCreate, parent.childNodes[1]);
@@ -779,9 +815,19 @@
 			let base64code=GM_getValue('BASE64CODELINK');
 			if(base64code){
 				base64code=Base64.decode(base64code);
-				tool.inputUserValue(base64code);
-				 GM_setValue('BASE64CODELINK','');
-				 updateVersion(true);
+				if(typeof swal === 'undefined'){
+					tool.sleep(1000).then(()=>{
+						tool.inputUserValue(base64code);
+						GM_setValue('BASE64CODELINK','');
+						updateVersion(true);
+					})
+				}else{
+					tool.inputUserValue(base64code);
+				    GM_setValue('BASE64CODELINK','');
+				    updateVersion(true);
+				}
+
+
 			}else{
 				updateVersion(false);
 			}
@@ -840,6 +886,7 @@
 		var f = linkList[i];
 		Swal.getHtmlContainer().querySelector("index").textContent=i+1+"/"+linkList.length;
         f.path.replace(/["\\\:*?<>|]/, "");
+
         if(f.md5s){
              tool.post(`https://pan.baidu.com/api/rapidupload?bdstoken=${bdstoken}`,{
                 rtype:0,
@@ -848,28 +895,28 @@
                 "slice-md5": f.md5s.toLowerCase(),
                 "content-length": f.size,
 			},{"User-Agent":"netdisk;2.2.51.6;netdisk;10.0.63;PC;android-android;QTP/1.0.32.2"}).then((res)=>{
-            if (res.errno === -8 && labFig < 2) {
-                 f.path='copy_'+f.path;
-				 savePathList(i, labFig + 1);
-			}else if (res.errno === 404 && labFig < 2) {
-                 if(labFig==1){
-                      f.md5=tool.randMd5(f.md5);
-                 }else{
-                      f.md5=tool.charRecoveStr(f.md5);
-                 }
-
-				 savePathList(i, labFig + 1);
-			}else if (res.errno === 31039 && labFig < 2) {
-                 f.path=tool.changePath(f.path);
-				 savePathList(i, labFig + 1);
-			}else if (res.errno===0) {
-                  f.errno = res.errno;
-                savePathList(i+1,0);
-			}else{
-               failed++;
-			   f.errno=res.errno;
-              if(labFig<=0 || linkList.length==1) savePathList(i+1,0);
-            }
+                 if(res.errno===0){
+					f.errno = 0;
+					savePathList(i+1,0);
+				 }else{
+					if (res.errno === 404 && labFig < 2) {
+						 if(labFig==1){
+							  f.md5=tool.randMd5(f.md5);
+						 }else{
+							  f.md5=tool.charRecoveStr(f.md5);
+						 }
+						 savePathList(i, labFig + 1);
+					}else if (res.errno === 31039 && labFig < 2) {
+						 f.path=tool.changePath(f.path);
+						 savePathList(i, labFig + 1);
+					}else{
+					   failed++;
+					   f.errno=res.errno;
+					   savePathList(i+1,0);
+					}
+					 
+				 }
+             
         })
         }else{
             $.ajax({
