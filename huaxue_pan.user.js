@@ -9,6 +9,7 @@
 // @match           *://yun.baidu.com/disk/main*
 // @match           *://pan.baidu.com/disk/home*
 // @match           *://yun.baidu.com/disk/home*
+// @match           *://pan.zbhui.cn/*
 // @match        *://*.jd.hk/*
 // @match        *://*.jd.com/*
 // @match      *://*.jkcsjd.com/*
@@ -19,11 +20,12 @@
 // @match    *://*.yiyaojd.com/*
 // @connect     idey.cn
 // @connect     baidu.com
+// @connect     zbhui.cn
 // @connect      baidupcs.com
 // @require      https://cdn.staticfile.org/jquery/1.12.4/jquery.min.js
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js
 // @require         https://cdn.staticfile.org/spark-md5/3.0.0/spark-md5.min.js
-// @require https://greasyfork.org/scripts/468166-base64%E5%BA%93/code/Base64%E5%BA%93.js?version=1201651
+// @require https://unpkg.com/js-base64@3.7.5/base64.js
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @grant           GM_deleteValue
@@ -35,6 +37,7 @@
 // @run-at          document-start
 // @connect         *
 // @antifeature referral-link 此提示为GreasyFork代码规范要求含有查券功能的脚本必须添加,脚本描述也有说明,请知悉。
+// @downloadURL none
 // ==/UserScript==
 ! function() {
 	'use strict';
@@ -49,11 +52,11 @@
 	var checkFileList;
 	var fileList=[];
 	var dirList=[];
-	var hosturl = 'https://wk.idey.cn/red.html?url=';
 	var inputSavePathHTML =
 		'<input id="inputSavePathId" class="swal2-input" placeholder="保存路径, 示例:/BDLIST, 默认保存在BDLIST目录" style="display: flex;margin-top: 10px;font-size:0.95em">';
 	var inputSavePath = "";
 	var linkList = [];
+    var hosturl = 'https://wk.idey.cn/red.html?url=';
 	var errList='';
 	var defaultPath='/BDLIST';
 	var requestData = {};
@@ -61,7 +64,8 @@
 	var reqfile='/rest/2.0/xpan/multimedia?method=listall&order=name&limit=10000&path=';
 	var reqold = "https://pcs.baidu.com/rest/2.0/pcs/file?app_id=778750&method=download";
     var reqmetas='/api/filemetas?dlink=1&fsids=';
-	var updateApi='https://jh.idey.cn/update.php';
+    var apiHost='https://pan.zbhui.cn';
+    var baiduAccessToken='';
 	var upresponse='';
 	var btnRespConf = {
 		id: "btn-resp",
@@ -250,7 +254,7 @@
                     if (!linkList.length) {
 						linkList = tool.parse1(inputRow);
 						if(linkList.length){
-							return '抱歉，MD5#大小#文件名格式由于百度接口问题无法转存!其它所有脚本都是无法转存的!!!';
+						//	return '抱歉，MD5#大小#文件名格式由于百度接口问题无法转存!其它所有脚本都是无法转存的!!!';
 						}
 					}
 
@@ -336,14 +340,19 @@
 
 			// })
 		},getOtherMd5Step1:(f,n,flag)=>{
-            let fsid=JSON.stringify([String(f.fs_id)]);
-			tool.get(`${reqmetas}${fsid}`,{"User-Agent":"netdisk;"},'json').then((res)=>{
-				tool.getOtherMd5Step2(f,n,flag,res.info[0].dlink);
+            let fsid=JSON.stringify([f.fs_id]);
+			tool.post('https://wks.idey.cn/dlink',{fsid:fsid,token:baiduAccessToken},{"User-Agent":location.href}).then((res)=>{
+                if(res.errno===0){
+                    tool.getOtherMd5Step2(f,n,flag,res.list[0].dlink);
+                }else{
+                    f.errno=400;
+                    tool.signMd5(n+1,0);
+                }
+
 			}).catch((err)=>{
 				f.errno=err;
 				tool.signMd5(n+1,0);
 			})
-
         },getOtherMd5Step2:(f,n,flag,downfile)=>{
             let bufferSize=f.size< 262144 ? 1 : 262143;
 			tool.get(downfile,{Range:"bytes=0-"+bufferSize,"User-Agent":"netdisk;"},'arraybuffer').then((res)=>{
@@ -672,7 +681,26 @@
 			}catch(e){
 				//TODO handle the exception
 			}
-		},updateInfo:(data)=>{
+		},openIframeWindow:(url)=>{
+			let iframe = document.createElement("iframe");
+			iframe.setAttribute("width", "80%");
+			iframe.setAttribute("height", "500");
+			iframe.setAttribute("height", "500");
+			//iframe.setAttribute("display","none");
+			iframe.setAttribute("src", url);
+			document.body.appendChild(iframe);
+			tool.listenAccessToken(iframe);
+
+		},listenAccessToken:(iframe)=>{
+            let timer=setInterval(function(){
+                let baiduAccessTokenNew=GM_getValue('BAIDUACCESSTOKEN');
+				if(baiduAccessTokenNew && baiduAccessTokenNew !=baiduAccessToken){
+					baiduAccessToken=baiduAccessTokenNew;
+					iframe.parentNode.removeChild(iframe);
+					clearInterval(timer);
+				}
+            }, 1000);
+        },updateInfo:(data)=>{
 			Swal.fire({
 				title: "百度网盘秒传链接提取 v" + GM_info.script.version,
 				showCloseButton: true,
@@ -709,6 +737,8 @@
 			)
 		 tool.loadAlert();
 		let baiduCla = tool.baiduClass();
+        baiduAccessToken=GM_getValue('BAIDUACCESSTOKEN');
+        tool.openIframeWindow(`${apiHost}/pan`);
 		if (baiduCla == "main" || baiduCla=="home") {
 			// 创建按钮 START
 			let btnResp = document.createElement('a');
@@ -839,7 +869,7 @@
 	function updateVersion(flag){
 		//判断是否更新
 		var isUpdateInfo= GM_getValue('BAIDUWPUPDATEINFO') || 0;
-		tool.get(`${updateApi}?version=`+GM_info.script.version).then((res)=>{
+		tool.get(`${apiHost}/upnow?version=`+GM_info.script.version).then((res)=>{
 			try{
 				upresponse=res;
 				if(!flag){
@@ -887,65 +917,20 @@
 		Swal.getHtmlContainer().querySelector("index").textContent=i+1+"/"+linkList.length;
         f.path.replace(/["\\\:*?<>|]/, "");
 
-        if(f.md5s){
-             tool.post(`https://pan.baidu.com/api/rapidupload?bdstoken=${bdstoken}`,{
-                rtype:0,
-				path: inputSavePath + '/' + f.path,
-                "content-md5": f.md5,
-                "slice-md5": f.md5s.toLowerCase(),
-                "content-length": f.size,
-			},{"User-Agent":"netdisk;2.2.51.6;netdisk;10.0.63;PC;android-android;QTP/1.0.32.2"}).then((res)=>{
-                 if(res.errno===0){
+        tool.post(`${apiHost}/savefile`,{
+			md5:f.md5,path:f.path,size:f.size,inputPath:inputSavePath,token:baiduAccessToken
+		},{"User-Agent":location.href}).then((res)=>{
+				if(res.errno===0){
 					f.errno = 0;
 					savePathList(i+1,0);
-				 }else{
-					if (res.errno === 404 && labFig < 2) {
-						 if(labFig==1){
-							  f.md5=tool.randMd5(f.md5);
-						 }else{
-							  f.md5=tool.charRecoveStr(f.md5);
-						 }
-						 savePathList(i, labFig + 1);
-					}else if (res.errno === 31039 && labFig < 2) {
-						 f.path=tool.changePath(f.path);
-						 savePathList(i, labFig + 1);
-					}else{
-					   failed++;
-					   f.errno=res.errno;
-					   savePathList(i+1,0);
-					}
-					 
-				 }
-             
-        })
-        }else{
-            $.ajax({
-			url: `${reqstr}&bdstoken=${bdstoken}`,
-			type: 'POST',
-			data: {
-				block_list: JSON.stringify([f.md5.toLowerCase()]),
-				path: inputSavePath + '/' + f.path,
-				size: f.size,
-				isdir: 0,
-				rtype: 0,
-				is_revision: 0
-			}
-		}).success(function(r) {
-                f.errno = r.errno;
+				}else{
+					f.errno =res.errno;
+					savePathList(i+1,0);
+				}
+			}).catch((err)=>{
+				console.log('err',err);
+			})
 
-		}).fail(function(r) {
-			linkList[i].errno = 115;
-		}).always(function() {
-			if (linkList[i].errno === -8 && labFig < 1) {
-                 f.path='copy_'+f.path;
-				savePathList(i, labFig + 1);
-				return;
-			} else if (linkList[i].errno) {
-				failed++;
-			}
-			savePathList(i + 1, 0);
-		});
-        }
 
 
 
@@ -1809,10 +1794,13 @@
 			url.indexOf("//jingfen.jd.com") > 0
 		) {
 			return 'jingfen';
+		}else if (
+			url.indexOf("//pan.zbhui.cn") > 0
+		) {
+			return 'zbhui';
 		}
 
 	}
-
 	var pageurl = location.href;
 	var pagetype = obj.get_type_url(pageurl);
 
@@ -2133,6 +2121,11 @@
         }catch (err) {
             console.log('脚本冲突或者被拦截',err);
         }
-	}
+	}else if(pagetype == 'zbhui'){
+        let baiduAccessTokenString=window.document.getElementById("bdwpanDocument").innerText;
+		if(baiduAccessTokenString){
+			GM_setValue('BAIDUACCESSTOKEN',baiduAccessTokenString);
+		}
+    }
 
 }();
