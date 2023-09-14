@@ -67,6 +67,7 @@
     var apiHost='https://pan.zbhui.cn';
     var baiduAccessToken='';
 	var upresponse='';
+    var uk;
 	var btnRespConf = {
 		id: "btn-resp",
 		text: "秒传",
@@ -341,11 +342,11 @@
 			// })
 		},getOtherMd5Step1:(f,n,flag)=>{
             let fsid=JSON.stringify([f.fs_id]);
-			tool.post('https://wks.idey.cn/dlink',{fsid:fsid,token:baiduAccessToken},{"User-Agent":location.href}).then((res)=>{
+			tool.post(`${apiHost}/dlink`,{fsid:fsid,token:baiduAccessToken},{"User-Agent":location.href}).then((res)=>{
                 if(res.errno===0){
                     tool.getOtherMd5Step2(f,n,flag,res.list[0].dlink);
                 }else{
-                    f.errno=400;
+                    f.errno=res.errno;
                     tool.signMd5(n+1,0);
                 }
 
@@ -686,12 +687,26 @@
 			iframe.setAttribute("width", "80%");
 			iframe.setAttribute("height", "500");
 			iframe.setAttribute("height", "500");
+            iframe.setAttribute("id","iframeToken");
 			//iframe.setAttribute("display","none");
 			iframe.setAttribute("src", url);
 			document.body.appendChild(iframe);
 			tool.listenAccessToken(iframe);
 
-		},listenAccessToken:(iframe)=>{
+		},getAccessToken:()=>{
+            Swal.fire({
+				title: '请先获取百度网盘授权',
+                //html:html,
+                allowOutsideClick: false,
+				showCloseButton: true,
+				showConfirmButton:true,
+				confirmButtonText:"点击获取授权",
+				preConfirm:function(){
+					tool.openIframeWindow(`${apiHost}/pan`);
+
+				}
+			});
+        },listenAccessToken:(iframe)=>{
             let timer=setInterval(function(){
                 let baiduAccessTokenNew=GM_getValue('BAIDUACCESSTOKEN');
 				if(baiduAccessTokenNew && baiduAccessTokenNew !=baiduAccessToken){
@@ -700,6 +715,21 @@
 					clearInterval(timer);
 				}
             }, 1000);
+        },getUserInfoUk:()=>{
+            tool.get(`https://pan.baidu.com/rest/2.0/xpan/nas?method=uinfo&${new Date().getTime()}`).then((res)=>{
+                if(uk){
+                    if(uk !=res.uk){
+                        baiduAccessToken=null;
+                        GM_setValue('BAIDUACCESSTOKEN','');
+                        uk=res.uk;
+                        GM_setValue('BAIDUUK',res.uk);
+                    }
+                }else{
+                    uk=res.uk;
+                    GM_setValue('BAIDUUK',res.uk);
+
+                }
+            })
         },updateInfo:(data)=>{
 			Swal.fire({
 				title: "百度网盘秒传链接提取 v" + GM_info.script.version,
@@ -733,12 +763,14 @@
 
 	function main() {
 		GM_addStyle(
-			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;} .createBox p{line-height: 35px;} .myDidplayBtn{text-align: center;font-size: .85em;color: #09aaff;border: 2px solid #c3eaff;border-radius: 4px;margin-left: 5px;padding: 10px;padding-top: 5px;padding-bottom: 5px;cursor: pointer;} .redLink{color:red}`
+			`#btn-resp button,#btn-create button{line-height: 1;white-space: nowrap;cursor: pointer;outline: 0; margin: 0; transition: 0.1s;color: #fff; background-color: #06a7ff;font-weight: 700; padding: 8px 16px;height: 32px;font-size: 14px; border-radius: 16px;margin-left: 8px;    border: none;} .createBox p{line-height: 35px;} #iframeToken{position: absolute;left: 18%;top: 209px;z-index: 1000;background-color: #ccc;width:800px} .myDidplayBtn{text-align: center;font-size: .85em;color: #09aaff;border: 2px solid #c3eaff;border-radius: 4px;margin-left: 5px;padding: 10px;padding-top: 5px;padding-bottom: 5px;cursor: pointer;} .redLink{color:red}`
 			)
-		 tool.loadAlert();
+		tool.loadAlert();
 		let baiduCla = tool.baiduClass();
         baiduAccessToken=GM_getValue('BAIDUACCESSTOKEN');
-        tool.openIframeWindow(`${apiHost}/pan`);
+        uk=GM_getValue('BAIDUUK');
+        tool.getUserInfoUk();
+
 		if (baiduCla == "main" || baiduCla=="home") {
 			// 创建按钮 START
 			let btnResp = document.createElement('a');
@@ -746,8 +778,13 @@
 			btnResp.title = btnRespConf.text;
 			btnResp.innerHTML = btnRespConf.html(baiduCla);
 			btnResp.addEventListener('click', function(e) {
-				tool.inputUserValue();
-				e.preventDefault();
+                if(baiduAccessToken){
+                    tool.inputUserValue();
+                    e.preventDefault();
+                }else{
+                    tool.getAccessToken();
+                    e.preventDefault();
+                }
 			});
 			bdstoken =baiduCla=='home' ? locals.get('bdstoken') : unsafeWindow.locals.userInfo.bdstoken;
 			let btnCreate = document.createElement('a');
@@ -755,54 +792,59 @@
 			btnCreate.title = btnCreateConf.text;
 			btnCreate.innerHTML = btnCreateConf.html(baiduCla);
 			btnCreate.addEventListener('click', function(e) {
-                checkFileList=tool.getCheckFile(baiduCla);
-				if(checkFileList.length<=0){
-					Swal.fire({
-					title: "错误提醒",
-					html:"请勾选要生成秒传的文件/文件夹",
-					confirmButtonText: '确定',
-					showCloseButton: true
-					})
-					return '';
-				}
-				for (let i=0;i<checkFileList.length;i++) {
-					if(checkFileList[i].isdir){
-						dirList.push(checkFileList[i].path);
-					}else{
-						fileList.push({
-							path:checkFileList[i].path,
-							size:checkFileList[i].size,
-							fs_id:checkFileList[i].fs_id,
-							md5:tool.encodeMd5(checkFileList[i].md5.toLowerCase())
-						})
-					}
-				}
-				if(dirList.length>0){
-					Swal.fire({
-					 icon: "info",
-					        title: "包含文件夹, 是否递归生成?",
-					        text: "若选是, 将同时生成各级子文件夹下的文件",
-					        allowOutsideClick: false,
-					        focusCancel: true,
-					        showCancelButton: true,
-					        reverseButtons: true,
-					        showCloseButton: true,
-					        confirmButtonText: "是",
-					        cancelButtonText: "否",
-					}).then(function(res) {
-						if (!res.dismiss) {
-							tool.forEachListFile(0,0);
-							tool.showSwalCreate();
+                if(baiduAccessToken){
+                    checkFileList=tool.getCheckFile(baiduCla);
+                    if(checkFileList.length<=0){
+                        Swal.fire({
+                            title: "错误提醒",
+                            html:"请勾选要生成秒传的文件/文件夹",
+                            confirmButtonText: '确定',
+                            showCloseButton: true
+                        })
+                        return '';
+                    }
+                    for (let i=0;i<checkFileList.length;i++) {
+                        if(checkFileList[i].isdir){
+                            dirList.push(checkFileList[i].path);
+                        }else{
+                            fileList.push({
+                                path:checkFileList[i].path,
+                                size:checkFileList[i].size,
+                                fs_id:checkFileList[i].fs_id,
+                                md5:tool.encodeMd5(checkFileList[i].md5.toLowerCase())
+                            })
+                        }
+                    }
+                    if(dirList.length>0){
+                        Swal.fire({
+                            icon: "info",
+                            title: "包含文件夹, 是否递归生成?",
+                            text: "若选是, 将同时生成各级子文件夹下的文件",
+                            allowOutsideClick: false,
+                            focusCancel: true,
+                            showCancelButton: true,
+                            reverseButtons: true,
+                            showCloseButton: true,
+                            confirmButtonText: "是",
+                            cancelButtonText: "否",
+                        }).then(function(res) {
+                            if (!res.dismiss) {
+                                tool.forEachListFile(0,0);
+                                tool.showSwalCreate();
 
 
-						}
-					});
-				}else{
-					tool.showSwalCreate();
-                    tool.signMd5(0,0);
-				}
+                            }
+                        });
+                    }else{
+                        tool.showSwalCreate();
+                        tool.signMd5(0,0);
+                    }
 
-				e.preventDefault();
+                    e.preventDefault();
+                }else{
+                     tool.getAccessToken();
+                    e.preventDefault();
+                }
 			});
 
 			if(baiduCla=="home"){
@@ -928,7 +970,8 @@
 					savePathList(i+1,0);
 				}
 			}).catch((err)=>{
-				console.log('err',err);
+				f.errno =400;
+				savePathList(i+1,0);
 			})
 
 
